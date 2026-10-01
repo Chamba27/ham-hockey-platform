@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FixtureStatus {
+  SCHEDULED
+  COMPLETED
+  POSTPONED
+  CANCELLED
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  shortName String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  competitions CompetitionTeam[]
+  homeFixtures Fixture[]         @relation("HomeTeam")
+  awayFixtures Fixture[]         @relation("AwayTeam")
+}
+
+model Competition {
+  id        String   @id @default(uuid())
+  name      String
+  season    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams    CompetitionTeam[]
+  fixtures Fixture[]
+}
+
+model CompetitionTeam {
+  id            String @id @default(uuid())
+  competitionId String
+  teamId        String
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  team        Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionId, teamId])
+  @@index([teamId])
+}
+
+model Fixture {
+  id            String        @id @default(uuid())
+  competitionId String
+  homeTeamId    String
+  awayTeamId    String
+  round         Int
+  scheduledDate DateTime?
+  status        FixtureStatus @default(SCHEDULED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  homeTeam    Team        @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam    Team        @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  result      Result?
+
+  @@index([competitionId, round])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+}
+
+model Result {
+  id        String   @id @default(uuid())
+  fixtureId String   @unique
+  homeScore Int
+  awayScore Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fixture Fixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+}
