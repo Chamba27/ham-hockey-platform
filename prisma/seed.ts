@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../app/generated/prisma/client";
+import { PrismaClient } from "../src/app/generated/prisma/client";
 
 // Get connection string from .env (DIRECT_URL or DATABASE_URL)
 const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
