@@ -2,6 +2,42 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateAndSaveFixturesForCompetition } from "../../../../lib/services/fixture";
 import { prisma } from "../../../../lib/prisma";
 
+/**
+ * GET /api/competitions/[id]/fixtures
+ *
+ * Returns the full fixture/match schedule for a competition, in order,
+ * including each fixture's recorded result (null if not played yet).
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: competitionId } = await params;
+
+  const fixtures = await prisma.fixture.findMany({
+    where: { competitionId },
+    orderBy: [{ round: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      round: true,
+      status: true,
+      scheduledDate: true,
+      homeTeam: { select: { id: true, name: true, shortName: true } },
+      awayTeam: { select: { id: true, name: true, shortName: true } },
+      result: { select: { homeScore: true, awayScore: true } },
+    },
+  });
+
+  return NextResponse.json({ competitionId, count: fixtures.length, fixtures });
+}
+
+/**
+ * POST /api/competitions/[id]/fixtures
+ *
+ * Generates a round-robin fixture schedule for the given competition
+ * and saves it to the database. Existing fixtures for this competition
+ * are replaced (see fixture.ts for the idempotency behaviour).
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -47,32 +83,4 @@ export async function POST(
       { status: 500 }
     );
   }
-}
-
-/**
- * GET /api/competitions/[id]/fixtures
- *
- * Returns the full fixture/match schedule for a competition, in order.
- * Read-only — never changes anything, so no idempotency concerns like POST has.
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: competitionId } = await params;
-
-  const fixtures = await prisma.fixture.findMany({
-    where: { competitionId },
-    orderBy: [{ round: "asc" }, { id: "asc" }],
-    select: {
-      id: true,
-      round: true,
-      status: true,
-      scheduledDate: true,
-      homeTeam: { select: { id: true, name: true, shortName: true } },
-      awayTeam: { select: { id: true, name: true, shortName: true } },
-    },
-  });
-
-  return NextResponse.json({ competitionId, count: fixtures.length, fixtures });
 }
