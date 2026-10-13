@@ -206,7 +206,7 @@ export async function deleteCompetition(id: string) {
   // 2. Guard: block deletion if fixtures exist
   if (competition._count.fixtures > 0) {
     throw new ConflictError(
-      `Cannot delete competition '${competition.name}': it has ${competition._count.fixtures} scheduled fixture(s). Remove or cancel all fixtures first.`
+      `Cannot delete competition '${competition.name}': it has ${competition._count.fixtures} scheduled fixture(s). Reset fixtures first via DELETE /api/competitions/${id}/fixtures?confirm=RESET.`
     );
   }
 
@@ -325,7 +325,7 @@ export async function removeTeamFromCompetition(
   // 3. Guard: block removal if competition has any fixtures
   if (competition._count.fixtures > 0) {
     throw new ConflictError(
-      `Cannot remove team from competition: competition already has ${competition._count.fixtures} scheduled fixture(s).`
+      `Cannot remove team from competition: competition already has ${competition._count.fixtures} scheduled fixture(s). Reset fixtures first via DELETE /api/competitions/${competitionId}/fixtures?confirm=RESET.`
     );
   }
 

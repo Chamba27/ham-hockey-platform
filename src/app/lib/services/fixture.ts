@@ -7,6 +7,15 @@
 
 import { prisma } from "../prisma";
 import { generateRoundRobinFixtures } from "../engine/roundRobin";
+import {
+  evaluateGenerationGuard,
+  validateResetConfirmation,
+} from "../engine/fixtureGuard";
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "../errors";
 
 export interface GenerateAndSaveOptions {
   doubleRoundRobin?: boolean;
@@ -45,10 +54,23 @@ export async function generateAndSaveFixturesForCompetition(
     );
   }
 
-  // 3. Run the pure domain engine.
+  // 3. Guard: check existing fixtures and results before overwriting
+  const [fixtureCount, resultCount] = await Promise.all([
+    prisma.fixture.count({ where: { competitionId } }),
+    prisma.result.count({ where: { fixture: { competitionId } } }),
+  ]);
+
+  const guard = evaluateGenerationGuard({ fixtureCount, resultCount });
+  if (!guard.allowed) {
+    throw new ConflictError(
+      `${guard.reason} To reset fixtures, send DELETE /api/competitions/${competitionId}/fixtures?confirm=RESET`
+    );
+  }
+
+  // 4. Run the pure domain engine.
   const generatedFixtures = generateRoundRobinFixtures(teamIds, options);
 
-  // 4. Persist: replace any existing schedule for this competition atomically.
+  // 5. Persist: replace any existing schedule for this competition atomically.
   const { count } = await prisma.$transaction(async (tx) => {
     await tx.fixture.deleteMany({ where: { competitionId } });
 
@@ -63,4 +85,53 @@ export async function generateAndSaveFixturesForCompetition(
   });
 
   return { count };
+}
+
+/**
+ * Wipes a competition's fixtures and their cascade-deleted results.
+ * Requires explicit confirmation (`confirm === "RESET"`).
+ */
+export async function resetFixturesForCompetition(
+  competitionId: string,
+  confirm: unknown
+): Promise<{
+  competitionId: string;
+  deletedFixtures: number;
+  deletedResults: number;
+}> {
+  // 1. Look up competition first so an unknown ID returns NotFoundError (404)
+  const competition = await prisma.competition.findUnique({
+    where: { id: competitionId },
+    select: { id: true },
+  });
+
+  if (!competition) {
+    throw new NotFoundError(`Competition not found: ${competitionId}`);
+  }
+
+  // 2. Count existing fixtures and results
+  const [fixtureCount, resultCount] = await Promise.all([
+    prisma.fixture.count({ where: { competitionId } }),
+    prisma.result.count({ where: { fixture: { competitionId } } }),
+  ]);
+
+  // 3. Validate confirmation token with the engine
+  const validation = validateResetConfirmation(confirm);
+  if (!validation.isValid) {
+    throw new ValidationError("Validation failed.", [
+      ...validation.errors,
+      `This action would delete ${fixtureCount} fixture(s) and ${resultCount} recorded result(s).`,
+    ]);
+  }
+
+  // 4. Delete all fixtures inside a transaction (results cascade-delete via schema)
+  await prisma.$transaction(async (tx) => {
+    await tx.fixture.deleteMany({ where: { competitionId } });
+  });
+
+  return {
+    competitionId,
+    deletedFixtures: fixtureCount,
+    deletedResults: resultCount,
+  };
 }

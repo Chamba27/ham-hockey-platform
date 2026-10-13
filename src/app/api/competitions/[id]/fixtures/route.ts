@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateAndSaveFixturesForCompetition } from "../../../../lib/services/fixture";
+import {
+  generateAndSaveFixturesForCompetition,
+  resetFixturesForCompetition,
+} from "../../../../lib/services/fixture";
 import { prisma } from "../../../../lib/prisma";
+import { ConflictError } from "../../../../lib/errors";
+import { handleRouteError } from "../../../../lib/http";
 
 /**
  * GET /api/competitions/[id]/fixtures
@@ -67,6 +72,10 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof ConflictError) {
+      return handleRouteError(error);
+    }
+
     const message = error instanceof Error ? error.message : "Unknown error.";
 
     if (message.startsWith("Competition not found")) {
@@ -82,5 +91,35 @@ export async function POST(
       { error: "Something went wrong generating fixtures." },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * DELETE /api/competitions/[id]/fixtures?confirm=RESET
+ *
+ * Wipes a competition's fixtures and their cascade-deleted results
+ * when confirmed with ?confirm=RESET.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: competitionId } = await params;
+  const confirm = request.nextUrl.searchParams.get("confirm");
+
+  try {
+    const result = await resetFixturesForCompetition(competitionId, confirm);
+
+    return NextResponse.json(
+      {
+        message: "Fixtures reset successfully.",
+        competitionId: result.competitionId,
+        deletedFixtures: result.deletedFixtures,
+        deletedResults: result.deletedResults,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    return handleRouteError(error);
   }
 }
